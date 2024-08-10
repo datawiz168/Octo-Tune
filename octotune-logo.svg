@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#50E3C2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 背景圆 -->
+  <circle cx="150" cy="150" r="145" fill="url(#grad1)"/>
+  
+  <!-- 章鱼头部 -->
+  <ellipse cx="150" cy="130" rx="70" ry="60" fill="#FFFFFF"/>
+  
+  <!-- 章鱼眼睛 -->
+  <circle cx="130" cy="120" r="10" fill="#333333"/>
+  <circle cx="170" cy="120" r="10" fill="#333333"/>
+  
+  <!-- 章鱼触手（形成类似音符或调谐器的形状） -->
+  <path d="M90,170 Q60,220 80,260" stroke="#FFFFFF" stroke-width="12" fill="none"/>
+  <path d="M120,180 Q100,230 110,270" stroke="#FFFFFF" stroke-width="12" fill="none"/>
+  <path d="M180,180 Q200,230 190,270" stroke="#FFFFFF" stroke-width="12" fill="none"/>
+  <path d="M210,170 Q240,220 220,260" stroke="#FFFFFF" stroke-width="12" fill="none"/>
+  
+  <!-- 调谐器中心线 -->
+  <line x1="150" y1="190" x2="150" y2="270" stroke="#FFFFFF" stroke-width="4"/>
+  
+  <!-- 文字 -->
+  <text x="150" y="290" font-family="Arial, sans-serif" font-size="24" fill="#FFFFFF" text-anchor="middle" font-weight="bold">OctoTune</text>
+</svg>
