@@ -128,6 +128,6 @@ if __name__ == "__main__":
     parameter_values = {
         'work_mem': ['4MB', '16MB', '64MB', ],
         'effective_cache_size': ['100MB', '200MB'],
-        'random_page_cost': ['2.0', '3.0', ]
+        'random_page_cost': ['2.0', '3.0' ]
     }
     run_multi_parameter_tests(parameter_values)
