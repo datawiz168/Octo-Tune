@@ -1,13 +1,11 @@
 import time
 import itertools
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from postgresql_tuner import PostgreSQLTuner
+from postgresql_tuner import PostgreSQLTuner, BayesianOptimizer
 import threading
-
 
 class TimeoutException(Exception):
     pass
-
 
 def run_with_timeout(func, args=(), kwargs={}, timeout_duration=10, default=None):
     class FuncThread(threading.Thread):
@@ -27,13 +25,12 @@ def run_with_timeout(func, args=(), kwargs={}, timeout_duration=10, default=None
     func_thread.join(timeout_duration)
 
     if func_thread.is_alive():
-        raise TimeoutException("Timed out!")
+        raise TimeoutException("超时！")
 
     if func_thread.exc:
         raise func_thread.exc
 
     return func_thread.result
-
 
 class PerformanceTestSuite:
     def __init__(self, tuner):
@@ -71,10 +68,10 @@ class PerformanceTestSuite:
             ''')
 
             self.tuner.pg_conn.commit()
-            print("Test environment setup completed successfully.")
+            print("测试环境已成功设置。")
         except Exception as e:
             self.tuner.pg_conn.rollback()
-            print(f"Error setting up test environment: {e}")
+            print(f"设置测试环境时出错: {e}")
         finally:
             cursor.close()
 
@@ -90,21 +87,21 @@ class PerformanceTestSuite:
             end_time = time.time()
             return end_time - start_time
         except TimeoutException:
-            print(f"Query timed out after {timeout} seconds: {query[:50]}...")  # 只打印查询的前50个字符
+            print(f"查询超时，超过 {timeout} 秒: {query[:50]}...")  # 只打印查询的前50个字符
             return timeout  # 返回超时时间作为执行时间
         except Exception as e:
-            print(f"Error executing query: {e}")
+            print(f"执行查询时出错: {e}")
             return -1  # 返回-1表示查询执行出错
         finally:
             cursor.close()
 
     def run_test_suite(self):
         tests = [
-            ("Simple SELECT", "SELECT * FROM users LIMIT 10000;"),
-            ("JOIN operation",
+            ("简单 SELECT", "SELECT * FROM users LIMIT 10000;"),
+            ("JOIN 操作",
              "SELECT orders.*, users.name FROM orders JOIN users ON orders.user_id = users.id LIMIT 10000;"),
-            ("Aggregation", "SELECT user_id, COUNT(*), AVG(total_amount) FROM orders GROUP BY user_id;"),
-            ("Complex query", """
+            ("聚合操作", "SELECT user_id, COUNT(*), AVG(total_amount) FROM orders GROUP BY user_id;"),
+            ("复杂查询", """
                 SELECT u.name, COUNT(o.id) as order_count, AVG(o.total_amount) as avg_order_amount
                 FROM users u
                 LEFT JOIN orders o ON u.id = o.user_id
@@ -120,7 +117,7 @@ class PerformanceTestSuite:
         for test_name, query in tests:
             execution_time = self.run_query(query)
             results[test_name] = execution_time
-            print(f"{test_name}: {execution_time:.4f} seconds")
+            print(f"{test_name}: {execution_time:.4f} 秒")
 
         return results
 
@@ -136,8 +133,7 @@ class PerformanceTestSuite:
 
         self.tuner.sqlite_conn.commit()
         cursor.close()
-        print(f"Test results saved to SQLite database.")
-
+        print("测试结果已保存到 SQLite 数据库。")
 
 class EnhancedTestSuite(PerformanceTestSuite):
     def run_complex_query(self):
@@ -187,25 +183,24 @@ class EnhancedTestSuite(PerformanceTestSuite):
 
     def run_enhanced_test_suite(self):
         results = super().run_test_suite()
-        print("Standard tests completed. Starting enhanced tests.")
+        print("标准测试完成。开始增强测试。")
 
-        print("Running complex query...")
+        print("运行复杂查询...")
         complex_query_time = self.run_complex_query()
-        results["Enhanced Complex Query"] = complex_query_time
-        print(f"Complex query completed in {complex_query_time:.4f} seconds")
+        results["增强复杂查询"] = complex_query_time
+        print(f"复杂查询已完成，耗时 {complex_query_time:.4f} 秒")
 
-        print("Running concurrent queries...")
+        print("运行并发查询...")
         concurrent_time, concurrent_results = self.run_concurrent_queries()
-        results["Concurrent Queries"] = concurrent_time
+        results["并发查询"] = concurrent_time
         for i, time in enumerate(concurrent_results):
-            results[f"Concurrent Query {i + 1}"] = time
-        print(f"Concurrent queries completed in {concurrent_time:.4f} seconds")
+            results[f"并发查询 {i + 1}"] = time
+        print(f"并发查询已完成，耗时 {concurrent_time:.4f} 秒")
 
-        print("All enhanced tests completed.")
+        print("所有增强测试已完成。")
         return results
 
-
-def run_multi_parameter_tests(parameter_values):
+def run_multi_parameter_tests(parameter_values, use_bayesian_optimization=True):
     try:
         tuner = PostgreSQLTuner()
         tuner.connect_postgresql()
@@ -216,38 +211,43 @@ def run_multi_parameter_tests(parameter_values):
         test_suite = EnhancedTestSuite(tuner)
         test_suite.setup_test_environment()
 
-        # 生成所有参数组合
-        combinations = list(itertools.product(
-            parameter_values['work_mem'],
-            parameter_values['effective_cache_size'],
-            parameter_values['random_page_cost']
-        ))
+        if use_bayesian_optimization:
+            # 使用贝叶斯优化
+            optimizer = BayesianOptimizer(tuner, test_suite)
+            best_params, best_performance = optimizer.optimize()
+            print(f"最佳参数: work_mem={best_params[0]}MB, "
+                  f"effective_cache_size={best_params[1]}MB, "
+                  f"random_page_cost={best_params[2]}")
+            print(f"最佳性能: {best_performance}")
+        else:
+            # 手动参数组合
+            combinations = list(itertools.product(
+                parameter_values['work_mem'],
+                parameter_values['effective_cache_size'],
+                parameter_values['random_page_cost']
+            ))
 
-        for work_mem, effective_cache_size, random_page_cost in combinations:
-            print(f"\nRunning tests with:")
-            print(f"work_mem = {work_mem}")
-            print(f"effective_cache_size = {effective_cache_size}")
-            print(f"random_page_cost = {random_page_cost}")
+            for work_mem, effective_cache_size, random_page_cost in combinations:
+                print(f"\n运行测试参数:")
+                print(f"work_mem = {work_mem}")
+                print(f"effective_cache_size = {effective_cache_size}")
+                print(f"random_page_cost = {random_page_cost}")
 
-            tuner.set_parameter_value('work_mem', work_mem)
-            tuner.set_parameter_value('effective_cache_size', effective_cache_size)
-            tuner.set_parameter_value('random_page_cost', str(random_page_cost))
+                tuner.set_parameter_value('work_mem', work_mem)
+                tuner.set_parameter_value('effective_cache_size', effective_cache_size)
+                tuner.set_parameter_value('random_page_cost', str(random_page_cost))
 
-            try:
-                results = test_suite.run_enhanced_test_suite()
-                test_suite.save_results(results, work_mem, effective_cache_size, random_page_cost)
-            except Exception as e:
-                print(f"An error occurred during test execution or saving results: {e}")
-                # 可以选择继续下一次迭代或者中断整个过程
-                # 如果选择继续，取消注释下一行
-                # continue
+                try:
+                    results = test_suite.run_enhanced_test_suite()
+                    test_suite.save_results(results, work_mem, effective_cache_size, random_page_cost)
+                except Exception as e:
+                    print(f"执行测试或保存结果时出错: {e}")
 
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"出现意外错误: {e}")
     finally:
         if 'tuner' in locals():
             tuner.close_connections()
-
 
 if __name__ == "__main__":
     parameter_values = {
@@ -255,4 +255,4 @@ if __name__ == "__main__":
         'effective_cache_size': ['100MB', '200MB'],
         'random_page_cost': ['2.0', '3.0']
     }
-    run_multi_parameter_tests(parameter_values)
+    run_multi_parameter_tests(parameter_values, use_bayesian_optimization=True)
