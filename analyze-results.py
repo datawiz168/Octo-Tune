@@ -6,7 +6,12 @@ import seaborn as sns
 from configparser import ConfigParser
 import numpy as np
 from pandas.plotting import parallel_coordinates
+import matplotlib.pyplot as plt
+from matplotlib import font_manager
 
+# 指定中文字体（以 SimHei 为例）
+plt.rcParams['font.sans-serif'] = ['SimHei']  # 使用黑体
+plt.rcParams['axes.unicode_minus'] = False  # 解决负号无法正常显示的问题
 
 def read_config(filename='database.ini'):
     parser = ConfigParser()
@@ -41,11 +46,12 @@ def preprocess_data(df):
     # 合并处理后的数据
     df_processed = pd.concat([other_queries, concurrent_avg])
 
-    # 转换 'work_mem' 和 'effective_cache_size' 为数值类型
-    df_processed['work_mem'] = df_processed['work_mem'].str.replace('MB', '').astype(int)
-    df_processed['effective_cache_size'] = df_processed['effective_cache_size'].str.replace('MB', '').astype(int)
+    # 处理 'work_mem' 和 'effective_cache_size' 字段
+    df_processed['work_mem'] = df_processed['work_mem'].str.replace('MB', '').astype(float).round().astype(int)
+    df_processed['effective_cache_size'] = df_processed['effective_cache_size'].str.replace('MB', '').astype(float).round().astype(int)
 
     return df_processed
+
 
 
 def create_boxplot(df):
@@ -79,10 +85,17 @@ def create_improved_heatmaps(df):
 
 
 def create_single_heatmap(data, value_column, title, filename):
+    # 四舍五入到两位小数
+    data['work_mem'] = data['work_mem'].round(2)
+    data['effective_cache_size'] = data['effective_cache_size'].round(2)
+    data['random_page_cost'] = data['random_page_cost'].round(2)
+
+    # 创建数据透视表
     pivot = data.pivot_table(values=value_column,
                              index='work_mem',
                              columns=['effective_cache_size', 'random_page_cost'])
 
+    # 创建热图
     plt.figure(figsize=(14, 10))
     sns.heatmap(pivot, annot=True, fmt=".2f", cmap='coolwarm', cbar_kws={'label': 'Execution Time (s)'})
     plt.title(f'Heatmap of {title} by Work Mem, Effective Cache Size, and Random Page Cost')
