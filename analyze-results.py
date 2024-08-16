@@ -28,66 +28,76 @@ def load_data_from_sqlite():
     return df
 
 
-def preprocess_columns(df):
-    # 将 'work_mem' 和 'effective_cache_size' 列转换为数值
-    df['work_mem'] = df['work_mem'].str.replace('MB', '').astype(int)
-    df['effective_cache_size'] = df['effective_cache_size'].str.replace('MB', '').astype(int)
-    return df
+def preprocess_data(df):
+    # 分离并发查询和其他查询
+    concurrent_queries = df[df['test_name'].str.contains('Concurrent Query')]
+    other_queries = df[~df['test_name'].str.contains('Concurrent Query')]
+
+    # 计算并发查询的平均执行时间
+    concurrent_avg = concurrent_queries.groupby(['work_mem', 'effective_cache_size', 'random_page_cost', 'timestamp'])[
+        'execution_time'].mean().reset_index()
+    concurrent_avg['test_name'] = 'Concurrent Queries (Avg)'
+
+    # 合并处理后的数据
+    df_processed = pd.concat([other_queries, concurrent_avg])
+
+    # 转换 'work_mem' 和 'effective_cache_size' 为数值类型
+    df_processed['work_mem'] = df_processed['work_mem'].str.replace('MB', '').astype(int)
+    df_processed['effective_cache_size'] = df_processed['effective_cache_size'].str.replace('MB', '').astype(int)
+
+    return df_processed
 
 
 def create_boxplot(df):
-    plt.figure(figsize=(12, 6))
-    sns.boxplot(x='test_name', y='execution_time', hue='work_mem', data=df)
+    df_processed = preprocess_data(df)
+    plt.figure(figsize=(16, 8))
+    sns.boxplot(x='test_name', y='execution_time', hue='work_mem', data=df_processed)
     plt.title('Execution Time Distribution by Test Name and Work Mem')
-    plt.savefig(os.path.join('pic', 'boxplot_execution_time.png'))
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.legend(title='work_mem', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.savefig(os.path.join('pic', 'boxplot_execution_time.png'), dpi=300, bbox_inches='tight')
     plt.close()
 
 
-def create_heatmaps_with_three_params(df):
-    # 计算平均执行时间的聚合数据
-    aggregated_mean = df.groupby(['work_mem', 'effective_cache_size', 'random_page_cost']).agg(
-        {'execution_time': 'mean'}).reset_index()
+def create_improved_heatmaps(df):
+    df_processed = preprocess_data(df)
 
-    # 计算95th百分位执行时间的聚合数据
-    aggregated_95th = df.groupby(['work_mem', 'effective_cache_size', 'random_page_cost']).agg(
-        {'execution_time': lambda x: np.percentile(x, 95)}).reset_index()
+    # 计算平均执行时间和95th百分位数
+    aggregated = df_processed.groupby(['work_mem', 'effective_cache_size', 'random_page_cost']).agg({
+        'execution_time': ['mean', lambda x: np.percentile(x, 95)]
+    }).reset_index()
+    aggregated.columns = ['work_mem', 'effective_cache_size', 'random_page_cost', 'mean_time', '95th_percentile']
 
-    # 将 'work_mem' 和 'effective_cache_size' 转换为数值
-    aggregated_mean['work_mem'] = aggregated_mean['work_mem'].str.replace('MB', '').astype(int)
-    aggregated_mean['effective_cache_size'] = aggregated_mean['effective_cache_size'].str.replace('MB', '').astype(int)
-    aggregated_95th['work_mem'] = aggregated_95th['work_mem'].str.replace('MB', '').astype(int)
-    aggregated_95th['effective_cache_size'] = aggregated_95th['effective_cache_size'].str.replace('MB', '').astype(int)
+    # 创建平均执行时间的热图
+    create_single_heatmap(aggregated, 'mean_time', 'Mean Execution Time', 'heatmap_mean_execution_time.png')
 
-    # 创建第一个热力图 - 显示平均执行时间
-    pivot_mean = aggregated_mean.pivot_table(values='execution_time', index='work_mem',
-                                             columns=['effective_cache_size', 'random_page_cost'])
+    # 创建95th百分位执行时间的热图
+    create_single_heatmap(aggregated, '95th_percentile', '95th Percentile Execution Time',
+                          'heatmap_95th_execution_time.png')
+
+
+def create_single_heatmap(data, value_column, title, filename):
+    pivot = data.pivot_table(values=value_column,
+                             index='work_mem',
+                             columns=['effective_cache_size', 'random_page_cost'])
+
     plt.figure(figsize=(14, 10))
-    sns.heatmap(pivot_mean, annot=True, fmt=".2f", cmap='coolwarm', cbar_kws={'label': 'Mean Execution Time (s)'})
-    plt.title('Heatmap of Mean Execution Time by Work Mem, Effective Cache Size, and Random Page Cost')
+    sns.heatmap(pivot, annot=True, fmt=".2f", cmap='coolwarm', cbar_kws={'label': 'Execution Time (s)'})
+    plt.title(f'Heatmap of {title} by Work Mem, Effective Cache Size, and Random Page Cost')
     plt.xlabel('Effective Cache Size (MB) / Random Page Cost')
     plt.ylabel('Work Mem (MB)')
     plt.tight_layout()
-    plt.savefig(os.path.join('pic', 'heatmap_mean_execution_time.png'))
-    plt.close()
-
-    # 创建第二个热力图 - 显示95th百分位执行时间
-    pivot_95th = aggregated_95th.pivot_table(values='execution_time', index='work_mem',
-                                             columns=['effective_cache_size', 'random_page_cost'])
-    plt.figure(figsize=(14, 10))
-    sns.heatmap(pivot_95th, annot=True, fmt=".2f", cmap='coolwarm',
-                cbar_kws={'label': '95th Percentile Execution Time (s)'})
-    plt.title('Heatmap of 95th Percentile Execution Time by Work Mem, Effective Cache Size, and Random Page Cost')
-    plt.xlabel('Effective Cache Size (MB) / Random Page Cost')
-    plt.ylabel('Work Mem (MB)')
-    plt.tight_layout()
-    plt.savefig(os.path.join('pic', 'heatmap_95th_execution_time.png'))
+    plt.savefig(os.path.join('pic', filename), dpi=300, bbox_inches='tight')
     plt.close()
 
 
 def create_time_series_plot(df):
+    df_processed = preprocess_data(df)
     plt.figure(figsize=(14, 7))
-    for test_name in df['test_name'].unique():
-        subset = df[df['test_name'] == test_name]
+    for test_name in df_processed['test_name'].unique():
+        subset = df_processed[df_processed['test_name'] == test_name]
         plt.plot(subset['timestamp'], subset['execution_time'], label=test_name)
     plt.xticks(rotation=45)
     plt.title('Execution Time Over Time')
@@ -97,27 +107,25 @@ def create_time_series_plot(df):
 
 
 def create_parallel_coordinates_plot(df):
-    # 将 'work_mem' 和 'effective_cache_size' 列转换为数值
-    df = preprocess_columns(df)
-
-    # 转换为字符串类型以进行绘图
-    df['work_mem'] = df['work_mem'].astype(str)
-    df['effective_cache_size'] = df['effective_cache_size'].astype(str)
-    df['random_page_cost'] = df['random_page_cost'].astype(str)
-    df['execution_time'] = df['execution_time'].astype(str)
+    df_processed = preprocess_data(df)
+    df_processed['work_mem'] = df_processed['work_mem'].astype(str)
+    df_processed['effective_cache_size'] = df_processed['effective_cache_size'].astype(str)
+    df_processed['random_page_cost'] = df_processed['random_page_cost'].astype(str)
+    df_processed['execution_time'] = df_processed['execution_time'].astype(str)
 
     plt.figure(figsize=(12, 6))
-    parallel_coordinates(df[['test_name', 'work_mem', 'effective_cache_size', 'random_page_cost', 'execution_time']],
-                         'test_name', colormap='viridis')
+    parallel_coordinates(
+        df_processed[['test_name', 'work_mem', 'effective_cache_size', 'random_page_cost', 'execution_time']],
+        'test_name', colormap='viridis')
     plt.title('Parallel Coordinates Plot for Test Parameters')
     plt.savefig(os.path.join('pic', 'parallel_coordinates_plot.png'))
     plt.close()
 
 
 def create_correlation_matrix(df):
-    df = preprocess_columns(df)  # 预处理列，转换为数值类型
+    df_processed = preprocess_data(df)
     plt.figure(figsize=(10, 8))
-    corr = df[['execution_time', 'work_mem', 'effective_cache_size', 'random_page_cost']].corr()
+    corr = df_processed[['execution_time', 'work_mem', 'effective_cache_size', 'random_page_cost']].corr()
     sns.heatmap(corr, annot=True, cmap='coolwarm', fmt='.2f')
     plt.title('Correlation Matrix of Parameters')
     plt.savefig(os.path.join('pic', 'correlation_matrix.png'))
@@ -135,7 +143,7 @@ def analyze_and_visualize(df):
         os.makedirs('pic')
 
     create_boxplot(df)
-    create_heatmaps_with_three_params(df)
+    create_improved_heatmaps(df)
     create_time_series_plot(df)
     create_parallel_coordinates_plot(df)
     create_correlation_matrix(df)
